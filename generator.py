@@ -15,10 +15,11 @@ class Generator(nn.Module):
         """
         super(Generator, self).__init__()
 
+        # a classic resnet-18
         self.resnet = Resnet(K)
 
         # mask generator
-        self.f = nn.Sequential(
+        f = nn.Sequential(
             nn.Linear(K + 2, 128),
             nn.GroupNorm(32, 128),
             nn.Tanh(),
@@ -32,23 +33,23 @@ class Generator(nn.Module):
             nn.Sigmoid()
         )
 
-        b = batch_size
-        w, h = image_size
-
-        coordinates = generate_coordinates(w, h)
-        coordinates = coordinates.unsqueeze(0)
-        self.coordinates = nn.Parameter(coordinates.repeat(b, 1, 1, 1), requires_grad=False)
-        # it has shape [b, h, w, 2]
-
         def weights_init(m):
             if isinstance(m, nn.GroupNorm):
                 init.ones_(m.weight)
                 init.zeros_(m.bias)
             elif isinstance(m, nn.Linear):
-                init.ones_(m.weight)
+                init.normal_(m.weight, std=0.01)
                 init.zeros_(m.bias)
 
-        self.f = self.f.apply(weights_init)
+        self.f = f.apply(weights_init)
+
+        b = batch_size
+        w, h = image_size
+
+        coordinates = generate_coordinates(w, h).unsqueeze(0)
+        coordinates = coordinates.repeat(b, 1, 1, 1)
+        self.coordinates = nn.Parameter(coordinates, requires_grad=False)
+        # it has shape [b, h, w, 2]
 
     def forward(self, images, T=10):
         """
@@ -63,9 +64,11 @@ class Generator(nn.Module):
             masks: a list of float tensors with shape [b, 1, h, w].
             colors: a list of float tensors with shape [b, 3, 1, 1].
         """
+        b, _, h, w = images.size()
+
         masks = []
         colors = []
-        b, _, h, w = images.size()
+
         x = torch.ones_like(images)
         # it has shape [b, 3, h, w] and
         # represents an initial white canvas

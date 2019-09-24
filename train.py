@@ -1,7 +1,7 @@
-import torch
-from torch.utils.tensorboard import SummaryWriter
 import time
 import numpy as np
+import torch
+from torch.utils.tensorboard import SummaryWriter
 from torch.utils.data import DataLoader
 from input_pipeline import Images
 from model import Model
@@ -9,15 +9,15 @@ from model import Model
 
 BATCH_SIZE = 8
 SIZE = 128
-DATA = '/home/dan/datasets/feidegger/images/'
-NUM_EPOCHS = 30
+DATA = '/home/dan/datasets/posters/images/'
+NUM_EPOCHS = 10
 DEVICE = torch.device('cuda:1')
 MODEL_SAVE_PREFIX = 'models/run00'
 LOGS_DIR = 'summaries/run00/'
 
-SAVE_EPOCH = 5
-PLOT_IMAGE_STEP = 3000
-PLOT_LOSS_STEP = 30
+SAVE_EPOCH = 1
+PLOT_IMAGE_STEP = 10
+PLOT_LOSS_STEP = 1
 
 
 def main():
@@ -29,7 +29,10 @@ def main():
         pin_memory=True, drop_last=True
     )
     num_steps = NUM_EPOCHS * (len(dataset) // BATCH_SIZE)
-    model = Model(device=DEVICE, num_steps=num_steps)
+    model = Model(
+        image_size=(SIZE, SIZE), batch_size=BATCH_SIZE,
+        device=DEVICE, num_steps=num_steps
+    )
 
     writer = SummaryWriter(LOGS_DIR)
     random_images = []  # images to show in tensorboard
@@ -72,5 +75,6 @@ def main():
 
         if e % SAVE_EPOCH == 0:
             model.save_model(MODEL_SAVE_PREFIX + f'_epoch_{e}')
+
 
 main()

@@ -16,15 +16,15 @@ class PerceptualLoss(nn.Module):
             x: a float tensor with shape [b, 3, h, w].
             y: a float tensor with shape [b, 3, h, w].
         Returns:
-            a float tensor with shape [].
+            a dict with float tensors with shape [].
         """
-        losses = []
+        losses = {}
 
         x = self.vgg(x)
         y = self.vgg(y)
 
         content_loss = F.mse_loss(x['relu3_3'], y['relu3_3'])
-        losses.append(content_loss)
+        losses['content_loss'] = content_loss
 
         for n in ['relu1_2', 'relu2_2', 'relu3_3', 'relu4_3']:
 
@@ -32,9 +32,9 @@ class PerceptualLoss(nn.Module):
             gram_y = gram_matrix(y[n])
 
             style_loss = F.mse_loss(gram_x, gram_y)
-            losses.append(style_loss)
+            losses[f'style_loss_{n}'].append(style_loss)
 
-        return sum(losses)
+        return losses
 
 
 def gram_matrix(x):

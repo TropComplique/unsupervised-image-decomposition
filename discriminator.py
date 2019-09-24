@@ -18,7 +18,7 @@ class MultiScaleDiscriminator(nn.Module):
 
         def weights_init(m):
             if isinstance(m, nn.Conv2d):
-                init.normal_(m.weight, std=0.02)
+                init.kaiming_normal_(m.weight, a=0.2)
                 if m.bias is not None:
                     init.zeros_(m.bias)
             elif isinstance(m, nn.InstanceNorm2d):
@@ -68,7 +68,7 @@ def get_layers(in_channels, depth, downsample):
         nn.Conv2d(in_channels, out_channels, **params),
         nn.LeakyReLU(0.2, inplace=True)
     )
-    downsampling = [block]
+    layers = [block]
 
     params['bias'] = False
     # bias is not needed
@@ -84,7 +84,7 @@ def get_layers(in_channels, depth, downsample):
             nn.InstanceNorm2d(out_channels, affine=True),
             nn.LeakyReLU(0.2, inplace=True)
         )
-        downsampling.append(block)
+        layers.append(block)
 
     """
     Right now receptive field is
@@ -113,4 +113,6 @@ def get_layers(in_channels, depth, downsample):
 
     See https://fomoro.com/projects/project/receptive-field-calculator
     """
-    return nn.Sequential(*(downsampling + [penultimate_block, final_block]))
+
+    layers = layers + [penultimate_block, final_block]
+    return nn.Sequential(*layers)
