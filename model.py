@@ -20,8 +20,8 @@ class Model:
         # mask parameter
         K = 10
 
-        image_size = (256, 256)
-        batch_size = 32
+        image_size = (128, 128)
+        batch_size = 8
         K = 10
         G = Generator(image_size, batch_size, K)
         D = MultiScaleDiscriminator(3, depth=64, downsample=3, num_networks=2)
@@ -58,14 +58,14 @@ class Model:
         restored_images, _, _ = self.G(images, T=10)
 
         # UPDATE DISCRIMINATOR
-
+        images.requires_grad = True
         real_scores = self.D(images)
         fake_scores = self.D(restored_images.detach())
         # they are tuples with float tensors that
         # have shape like [b, 1, some height, some width]
 
-        real_loss = F.softplus(-real_scores).mean()
-        fake_loss = F.softplus(fake_scores).mean()
+        real_loss = sum(F.softplus(-x).mean() for x in real_scores)
+        fake_loss = sum(F.softplus(x).mean() for x in fake_scores)
 
         """
         Notes:
@@ -73,21 +73,24 @@ class Model:
         2. 1 - sigmoid(x) = sigmoid(-x)
         """
 
-        images.requires_grad_(True)
-        g = grad(real_scores.sum(), images, create_graph=True)[0]
+        #images.requires_grad_(True)
+        
+        g1 = grad(real_scores[0].sum(), images, create_graph=True)[0]
+        g2 = grad(real_scores[1].sum(), images, create_graph=True)[0]
+        g = g1 + g2
         # it has shape [b, 3, h, w]
-
+        b = images.size(0)
         R1 = 0.5 * (g.view(b, -1).norm(p=2, dim=1) ** 2).mean(0)
         discriminator_loss = real_loss + fake_loss + 10 * R1
 
         self.optimizer['D'].zero_grad()
-        discriminator_loss.backward()
+        discriminator_loss.backward(retain_graph=True)
         self.optimizer['D'].step()
 
         # UPDATE GENERATOR
 
         fake_scores = self.D(restored_images)
-        gan_loss = F.softplus(-fake_scores).mean()
+        gan_loss = sum(F.softplus(-x).mean() for x in fake_scores)
         # this is non saturating gan loss
 
         perceptual_loss = self.perceptual_loss(restored_images, images)

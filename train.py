@@ -1,16 +1,17 @@
 import torch
 from torch.utils.tensorboard import SummaryWriter
 import time
+import numpy as np
 from torch.utils.data import DataLoader
 from input_pipeline import Images
 from model import Model
 
 
-BATCH_SIZE = 32
-SIZE = 256
-DATA = '/home/dan/datasets/four_styles/images/'
+BATCH_SIZE = 8
+SIZE = 128
+DATA = '/home/dan/datasets/feidegger/images/'
 NUM_EPOCHS = 30
-DEVICE = torch.device('cuda:0')
+DEVICE = torch.device('cuda:1')
 MODEL_SAVE_PREFIX = 'models/run00'
 LOGS_DIR = 'summaries/run00/'
 
@@ -71,3 +72,5 @@ def main():
 
         if e % SAVE_EPOCH == 0:
             model.save_model(MODEL_SAVE_PREFIX + f'_epoch_{e}')
+
+main()

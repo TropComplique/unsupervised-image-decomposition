@@ -1,5 +1,6 @@
 import torch
 import torch.nn as nn
+import torch.nn.init as init
 from torchvision.models import resnet18
 
 
@@ -35,16 +36,15 @@ class Generator(nn.Module):
         w, h = image_size
 
         coordinates = generate_coordinates(w, h)
-        coordinates = coordinates.unsqueeze(0).to(device)
-        self.coordinates = coordinates.repeat(b, 1, 1, 1)
+        coordinates = coordinates.unsqueeze(0)
+        self.coordinates = nn.Parameter(coordinates.repeat(b, 1, 1, 1), requires_grad=False)
         # it has shape [b, h, w, 2]
 
         def weights_init(m):
             if isinstance(m, nn.GroupNorm):
                 init.ones_(m.weight)
                 init.zeros_(m.bias)
-            else:
-                assert isinstance(m, nn.Linear)
+            elif isinstance(m, nn.Linear):
                 init.ones_(m.weight)
                 init.zeros_(m.bias)
 
@@ -65,7 +65,7 @@ class Generator(nn.Module):
         """
         masks = []
         colors = []
-
+        b, _, h, w = images.size()
         x = torch.ones_like(images)
         # it has shape [b, 3, h, w] and
         # represents an initial white canvas
@@ -83,7 +83,7 @@ class Generator(nn.Module):
             y = torch.cat([self.coordinates, p], dim=3)
             # it has shape [b, h, w, K + 2]
 
-            K = p.size(1)
+            K = p.size(3)
             y = y.reshape(-1, K + 2)
             M = self.f(y)  # shape [b * h * w, 1]
             M = M.reshape(b, h, w, 1)
@@ -112,12 +112,12 @@ class Resnet(nn.Module):
         super(Resnet, self).__init__()
 
         model = resnet18(pretrained=False, num_classes=K + 3)
-        model.conv1 = nn.Conv2d(6, model.inplanes, kernel_size=7, stride=2, padding=3, bias=False)
+        model.conv1 = nn.Conv2d(6, 64, kernel_size=7, stride=2, padding=3, bias=False)
 
         self.K = K
         self.model = model
 
-    def forward(self, x, T):
+    def forward(self, x):
         """
         The input tensor represents a batch of RGB image
         pairs with pixel values in the [0, 1] range.

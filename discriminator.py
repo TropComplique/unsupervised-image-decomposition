@@ -1,5 +1,6 @@
 import torch
 import torch.nn as nn
+import torch.nn.init as init
 
 
 class MultiScaleDiscriminator(nn.Module):
@@ -20,8 +21,7 @@ class MultiScaleDiscriminator(nn.Module):
                 init.normal_(m.weight, std=0.02)
                 if m.bias is not None:
                     init.zeros_(m.bias)
-            else:
-                assert isinstance(m, nn.InstanceNorm2d)
+            elif isinstance(m, nn.InstanceNorm2d):
                 init.ones_(m.weight)
                 init.zeros_(m.bias)
 
@@ -113,4 +113,4 @@ def get_layers(in_channels, depth, downsample):
 
     See https://fomoro.com/projects/project/receptive-field-calculator
     """
-    return nn.Sequential(downsampling + [penultimate_block, final_block])
+    return nn.Sequential(*(downsampling + [penultimate_block, final_block]))
