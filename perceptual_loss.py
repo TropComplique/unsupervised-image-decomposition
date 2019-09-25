@@ -32,7 +32,7 @@ class PerceptualLoss(nn.Module):
             gram_y = gram_matrix(y[n])
 
             style_loss = F.mse_loss(gram_x, gram_y)
-            losses[f'style_loss_{n}'].append(style_loss)
+            losses[f'style_loss_{n}'] = style_loss
 
         return losses
 

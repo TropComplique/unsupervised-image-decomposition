@@ -83,7 +83,8 @@ class Generator(nn.Module):
             p = p.repeat(1, h, w, 1)
             # it has shape [b, h, w, K]
 
-            y = torch.cat([self.coordinates, p], dim=3)
+            coordinates = self.coordinates[:b]  # hack
+            y = torch.cat([coordinates, p], dim=3)
             # it has shape [b, h, w, K + 2]
 
             K = p.size(3)
