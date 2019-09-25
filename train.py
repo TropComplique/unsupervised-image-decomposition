@@ -16,7 +16,7 @@ MODEL_SAVE_PREFIX = 'models/run00'
 LOGS_DIR = 'summaries/run00/'
 
 SAVE_EPOCH = 1
-PLOT_IMAGE_STEP = 50
+PLOT_IMAGE_STEP = 100
 PLOT_LOSS_STEP = 1
 
 
@@ -60,11 +60,13 @@ def main():
 
             if i % PLOT_IMAGE_STEP == 0:
                 model.G.eval()
+
                 for j, image in enumerate(random_images):
                     with torch.no_grad():
                         restored_image, _, _ = model.G(image, T=min(e, 10))
                         restored_image = restored_image[0].cpu()
                     writer.add_image(f'sample_{j}', restored_image, i)
+
                 model.G.train()
 
             if i % PLOT_LOSS_STEP == 0:

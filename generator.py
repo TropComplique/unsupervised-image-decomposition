@@ -51,7 +51,7 @@ class Generator(nn.Module):
         self.coordinates = nn.Parameter(coordinates, requires_grad=False)
         # it has shape [b, h, w, 2]
 
-    def forward(self, images, T=10):
+    def forward(self, images, T):
         """
         The input tensor represents RGB images
         with pixel values in the [0, 1] range.
