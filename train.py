@@ -10,10 +10,14 @@ from dataset import Images
 from model import Model
 
 
+torch.backends.cudnn.enabled = True
+torch.backends.cudnn.benchmark = True
+
+
 SIZE = 128
 BATCH_SIZE = 32
-NUM_EPOCHS = 10
-DATA = '/home/dan/datasets/ffhq_256/'
+NUM_EPOCHS = 400
+DATA = '/home/dan/datasets/256/'
 DEVICE = torch.device('cuda:0')
 WEIGHTS = 'weights/'
 
@@ -66,7 +70,7 @@ def main():
             if step % PRINT_FREQ == 0:
 
                 for k, v in losses.items():
-                    writer.add_scalar(f'losses/{k}', v, i)
+                    writer.add_scalar(f'losses/{k}', v, step)
 
                 writer.add_scalar('time', step_time, step)
                 writer.add_scalar('lr', model.optimizer.param_groups[0]['lr'], step)

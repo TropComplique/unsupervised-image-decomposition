@@ -22,7 +22,7 @@ class Images(Dataset):
         self.transform = transforms.Compose([
             transforms.Resize(size),
             transforms.RandomHorizontalFlip(),
-            transforms.ColorJitter(0.1, 0.1, 0.1, 0.1)
+            transforms.ColorJitter(0.05, 0.05, 0.05, 0.05)
         ])
 
     def __len__(self):

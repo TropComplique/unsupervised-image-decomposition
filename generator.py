@@ -71,16 +71,16 @@ class MaskGenerator(nn.Module):
 
         self.layers = nn.Sequential(
 
-            nn.GroupNorm(num_groups=32, num_channels=K + 2),
             nn.Conv2d(K + 2, depth, kernel_size=1),
+            nn.GroupNorm(num_groups=32, num_channels=depth),
             nn.Tanh(),
 
-            nn.GroupNorm(num_groups=32, num_channels=depth),
             nn.Conv2d(depth, depth, kernel_size=1),
+            nn.GroupNorm(num_groups=32, num_channels=depth),
             nn.Tanh(),
 
-            nn.GroupNorm(num_groups=32, num_channels=depth),
             nn.Conv2d(depth, depth, kernel_size=1),
+            nn.GroupNorm(num_groups=32, num_channels=depth),
             nn.Tanh(),
 
             nn.Conv2d(depth, 1, kernel_size=1),
@@ -106,7 +106,7 @@ class MaskGenerator(nn.Module):
         c = self.coordinates.expand(b, -1, -1, -1)
 
         x = torch.cat([x, c], dim=1)
-        return = self.layers(x)
+        return self.layers(x)
 
 
 class Resnet(nn.Module):
