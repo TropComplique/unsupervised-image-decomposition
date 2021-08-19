@@ -1,4 +1,7 @@
 import os
+import torch
+import numpy as np
+
 from PIL import Image
 from torch.utils.data import Dataset
 from torchvision import transforms
@@ -12,13 +15,14 @@ class Images(Dataset):
             folder: a string, the path to a folder with images.
             size: an integer.
         """
+
         self.names = os.listdir(folder)
         self.folder = folder
 
         self.transform = transforms.Compose([
-            transforms.RandomCrop(size),
+            transforms.Resize(size),
             transforms.RandomHorizontalFlip(),
-            transforms.ToTensor()
+            transforms.ColorJitter(0.1, 0.1, 0.1, 0.1)
         ])
 
     def __len__(self):
@@ -26,12 +30,16 @@ class Images(Dataset):
 
     def __getitem__(self, i):
         """
+        The output represents a RGB image
+        with pixel values in the [0, 255] range.
+
         Returns:
-            a float tensor with shape [3, size, size].
-            It represents a RGB image with
-            pixel values in [0, 1] range.
+            a byte tensor with shape [3, size, size].
         """
+
         name = self.names[i]
         path = os.path.join(self.folder, name)
+
         image = Image.open(path).convert('RGB')
-        return self.transform(image)
+        image = np.array(self.transform(image))
+        return torch.from_numpy(image).permute(2, 0, 1)

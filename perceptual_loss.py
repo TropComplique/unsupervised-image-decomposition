@@ -1,7 +1,6 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from torchvision.models import vgg16
 
 
 class PerceptualLoss(nn.Module):
@@ -16,25 +15,21 @@ class PerceptualLoss(nn.Module):
             x: a float tensor with shape [b, 3, h, w].
             y: a float tensor with shape [b, 3, h, w].
         Returns:
-            a dict with float tensors with shape [].
+            two float tensors with shape [].
         """
-        losses = {}
 
         x = self.vgg(x)
         y = self.vgg(y)
 
-        content_loss = F.mse_loss(x['relu3_3'], y['relu3_3'])
-        losses['content_loss'] = content_loss
+        content_loss = []
+        style_loss = []
 
         for n in ['relu1_2', 'relu2_2', 'relu3_3', 'relu4_3']:
 
-            gram_x = gram_matrix(x[n])
-            gram_y = gram_matrix(y[n])
+            content_loss.append(F.mse_loss(x[n], y[n]))
+            style_loss.append(F.mse_loss(gram_matrix(x[n]), gram_matrix(y[n])))
 
-            style_loss = F.mse_loss(gram_x, gram_y)
-            losses[f'style_loss_{n}'] = style_loss
-
-        return losses
+        return sum(content_loss), sum(style_loss)
 
 
 def gram_matrix(x):
@@ -44,7 +39,7 @@ def gram_matrix(x):
     Returns:
         a float tensor with shape [b, c, c].
     """
-    b, c, h, w = x.size()
+    b, c, h, w = x.shape
     x = x.view(b, c, h * w)
     g = torch.matmul(x, x.permute(0, 2, 1))
     return g.div(c * h * w)
@@ -55,15 +50,15 @@ class Extractor(nn.Module):
     def __init__(self):
         super(Extractor, self).__init__()
 
-        model = vgg16(pretrained=True)
-        self.model = model.eval().features
-        self.model.requires_grad_(False)
+        from torchvision.models import vgg16
+        model = vgg16(pretrained=True).features
+        self.model = model.requires_grad_(False).eval()
 
-        # normalization
-        mean = torch.Tensor([0.485, 0.456, 0.406]).view(1, 3, 1, 1)
-        std = torch.Tensor([0.229, 0.224, 0.225]).view(1, 3, 1, 1)
-        self.mean = nn.Parameter(data=mean, requires_grad=False)
-        self.std = nn.Parameter(data=std, requires_grad=False)
+        mean = torch.FloatTensor([0.485, 0.456, 0.406]).view(1, 3, 1, 1)
+        std = torch.FloatTensor([0.229, 0.224, 0.225]).view(1, 3, 1, 1)
+
+        self.register_buffer('mean', mean)
+        self.register_buffer('std', std)
 
         names = []
         i, j = 1, 1
@@ -91,9 +86,11 @@ class Extractor(nn.Module):
 
     def forward(self, x):
         """
+        The input represents RGB images with
+        pixel values in the [0, 1] range.
+
         Arguments:
             x: a float tensor with shape [b, 3, h, w].
-            It represents RGB images with pixel values in [0, 1] range.
         Returns:
             a dict with float tensors.
         """

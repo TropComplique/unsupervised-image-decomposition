@@ -1,57 +1,27 @@
 import torch
 import torch.nn as nn
-import torch.nn.init as init
-from torchvision.models import resnet18
 
 
 class Generator(nn.Module):
 
-    def __init__(self, image_size, batch_size, K):
-        """
-        Arguments:
-            image_size: a tuple of integers (width, height).
-            batch_size: an integer.
-            K: an integer.
-        """
+    def __init__(self, w=128, h=128, K=29):
         super(Generator, self).__init__()
 
-        # a classic resnet-18
         self.resnet = Resnet(K)
-
-        # mask generator
-        f = nn.Sequential(
-            nn.Linear(K + 2, 128),
-            nn.GroupNorm(32, 128),
-            nn.Tanh(),
-            nn.Linear(128, 128),
-            nn.GroupNorm(32, 128),
-            nn.Tanh(),
-            nn.Linear(128, 128),
-            nn.GroupNorm(32, 128),
-            nn.Tanh(),
-            nn.Linear(128, 1),
-            nn.Sigmoid()
-        )
+        self.mask = MaskGenerator(w, h, K)
 
         def weights_init(m):
-            if isinstance(m, nn.GroupNorm):
-                init.ones_(m.weight)
-                init.zeros_(m.bias)
-            elif isinstance(m, nn.Linear):
-                init.normal_(m.weight, std=0.01)
-                init.zeros_(m.bias)
+            if isinstance(m, (nn.BatchNorm2d, nn.GroupNorm)):
+                nn.init.ones_(m.weight)
+                nn.init.zeros_(m.bias)
+            elif isinstance(m, (nn.Conv2d, nn.Linear)):
+                nn.init.kaiming_normal_(m.weight)
+                if m.bias is not None:
+                    nn.init.zeros_(m.bias)
 
-        self.f = f.apply(weights_init)
+        self.apply(weights_init)
 
-        b = batch_size
-        w, h = image_size
-
-        coordinates = generate_coordinates(w, h).unsqueeze(0)
-        coordinates = coordinates.repeat(b, 1, 1, 1)
-        self.coordinates = nn.Parameter(coordinates, requires_grad=False)
-        # it has shape [b, h, w, 2]
-
-    def forward(self, images, T):
+    def forward(self, images, T=10):
         """
         The input tensor represents RGB images
         with pixel values in the [0, 1] range.
@@ -60,50 +30,83 @@ class Generator(nn.Module):
             images: a float tensor with shape [b, 3, h, w].
             T: an integer, the number of masks and colors.
         Returns:
-            x: a float tensor with shape [b, 3, h, w], restored images.
+            results: a list of float tensors with shape [b, 3, h, w], restored images.
             masks: a list of float tensors with shape [b, 1, h, w].
             colors: a list of float tensors with shape [b, 3, 1, 1].
         """
-        b, _, h, w = images.size()
 
+        results = []
         masks = []
         colors = []
 
-        x = torch.ones_like(images)
+        x = torch.zeros_like(images)
         # it has shape [b, 3, h, w] and
-        # represents an initial white canvas
+        # represents an initial black canvas
 
         for _ in range(T):
 
-            z = torch.cat([x, images], dim=1)
-            p, c = self.resnet(z)
+            p, c = self.resnet(torch.cat([x.detach(), images], dim=1))
             # they have shapes [b, K] and [b, 3]
 
-            p = p.unsqueeze(1).unsqueeze(1)
-            p = p.repeat(1, h, w, 1)
-            # it has shape [b, h, w, K]
-
-            coordinates = self.coordinates[:b]  # hack
-            y = torch.cat([coordinates, p], dim=3)
-            # it has shape [b, h, w, K + 2]
-
-            K = p.size(3)
-            y = y.reshape(-1, K + 2)
-            M = self.f(y)  # shape [b * h * w, 1]
-            M = M.reshape(b, h, w, 1)
-            M = M.permute(0, 3, 1, 2)
+            m = self.mask(p)
             # it has shape [b, 1, h, w]
 
             c = c.unsqueeze(2).unsqueeze(2)
             # it has shape [b, 3, 1, 1]
 
-            x = x * (1.0 - M) + c * M
+            x = x * (1.0 - m) + c * m
             # it has shape [b, 3, h, w]
 
-            masks.append(M)
-            colors.append(c)
+            results.append(x)
+            masks.append(m.detach())
+            colors.append(c.detach())
 
-        return x, masks, colors
+        return results, masks, colors
+
+
+class MaskGenerator(nn.Module):
+
+    def __init__(self, w, h, K, depth=128):
+        super(MaskGenerator, self).__init__()
+
+        self.layers = nn.Sequential(
+
+            nn.GroupNorm(num_groups=32, num_channels=K + 2),
+            nn.Conv2d(K + 2, depth, kernel_size=1),
+            nn.Tanh(),
+
+            nn.GroupNorm(num_groups=32, num_channels=depth),
+            nn.Conv2d(depth, depth, kernel_size=1),
+            nn.Tanh(),
+
+            nn.GroupNorm(num_groups=32, num_channels=depth),
+            nn.Conv2d(depth, depth, kernel_size=1),
+            nn.Tanh(),
+
+            nn.Conv2d(depth, 1, kernel_size=1),
+            nn.Sigmoid()
+        )
+
+        coordinates = generate_coordinates(w, h)
+        self.register_buffer('coordinates', coordinates)
+        # it has shape [1, 2, h, w]
+
+    def forward(self, x):
+        """
+        Arguments:
+            x: a float tensor with shape [b, K].
+        Returns:
+            a float tensor with shape [b, 1, h, w].
+        """
+
+        b, K = x.shape
+        h, w = self.coordinates.shape[2:]
+
+        x = x.view(b, K, 1, 1).expand(-1, -1, h, w)
+        c = self.coordinates.expand(b, -1, -1, -1)
+
+        x = torch.cat([x, c], dim=1)
+        return = self.layers(x)
 
 
 class Resnet(nn.Module):
@@ -115,6 +118,7 @@ class Resnet(nn.Module):
         """
         super(Resnet, self).__init__()
 
+        from torchvision.models import resnet18
         model = resnet18(pretrained=False, num_classes=K + 3)
         model.conv1 = nn.Conv2d(6, 64, kernel_size=7, stride=2, padding=3, bias=False)
 
@@ -147,19 +151,19 @@ def generate_coordinates(w, h):
     Arguments:
         w, h: integers.
     Returns:
-        a float tensor with shape [h, w, 2].
+        a float tensor with shape [1, 2, h, w].
     """
 
     y, x = torch.meshgrid(
         torch.arange(0, h, dtype=torch.float32),
         torch.arange(0, w, dtype=torch.float32)
     )
-    c = torch.stack([y, x], axis=2)
+    c = torch.stack([y, x], dim=0)
 
-    # it is true that c[a, b] = [a, b]
+    # it is true that c[:, a, b] = [a, b]
     # for all indices a and b
 
     scaler = torch.FloatTensor([h - 1, w - 1])
-    c /= scaler  # convert to the [0, 1] range
+    c /= scaler.view(2, 1, 1)  # to the [0, 1] range
 
-    return c
+    return c.unsqueeze(0)

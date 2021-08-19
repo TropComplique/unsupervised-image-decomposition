@@ -1,83 +1,85 @@
+import os
 import time
-import numpy as np
 import torch
+import numpy as np
+
 from torch.utils.tensorboard import SummaryWriter
 from torch.utils.data import DataLoader
-from input_pipeline import Images
+from torchvision.utils import make_grid
+from dataset import Images
 from model import Model
 
 
-BATCH_SIZE = 8
 SIZE = 128
-DATA = '/home/dan/datasets/posters/images/'
+BATCH_SIZE = 32
 NUM_EPOCHS = 10
-DEVICE = torch.device('cuda:1')
-MODEL_SAVE_PREFIX = 'models/run00'
-LOGS_DIR = 'summaries/run00/'
+DATA = '/home/dan/datasets/ffhq_256/'
+DEVICE = torch.device('cuda:0')
+WEIGHTS = 'weights/'
 
-SAVE_EPOCH = 1
-PLOT_IMAGE_STEP = 100
-PLOT_LOSS_STEP = 1
+SAVE_STEP = 10000
+IMAGE_STEP = 500
+PRINT_FREQ = 10
 
 
 def main():
 
     dataset = Images(folder=DATA, size=SIZE)
-    data_loader = DataLoader(
-        dataset=dataset, batch_size=BATCH_SIZE,
-        shuffle=True, num_workers=4,
-        pin_memory=True, drop_last=True
-    )
-    num_steps = NUM_EPOCHS * (len(dataset) // BATCH_SIZE)
-    model = Model(
-        image_size=(SIZE, SIZE), batch_size=BATCH_SIZE,
-        device=DEVICE, num_steps=num_steps
-    )
+    data_loader = DataLoader(dataset, BATCH_SIZE, shuffle=True, num_workers=4, pin_memory=True, drop_last=True)
 
-    writer = SummaryWriter(LOGS_DIR)
+    num_steps = NUM_EPOCHS * (len(dataset) // BATCH_SIZE)
+    model = Model(DEVICE, num_steps)
+
+    writer = SummaryWriter(WEIGHTS)
     random_images = []  # images to show in tensorboard
     indices = np.random.randint(0, len(dataset), size=10)
 
-    for k, i in enumerate(indices):
-        image = dataset[i]
-        writer.add_image(f'sample_{k}', image, 0)
-        random_images.append(image.unsqueeze(0).to(DEVICE))
+    random_images = [dataset[i] for i in indices]
+    random_images = torch.stack(random_images).to(DEVICE)
+    random_images = random_images.float().div_(255.0)
 
     # number of weight updates
-    i = 0
+    step = 1
 
-    for e in range(1, NUM_EPOCHS + 1):
+    for epoch in range(NUM_EPOCHS):
         for images in data_loader:
 
             images = images.to(DEVICE)
+            images = images.float().div_(255.0)
             # it has shape [b, 3, h, w]
 
-            i += 1
             start = time.perf_counter()
-            losses = model.train_step(images, T=min(e, 10))
+            losses = model.train_step(images)
             step_time = time.perf_counter() - start
             step_time = round(1000 * step_time, 1)
 
-            if i % PLOT_IMAGE_STEP == 0:
-                model.G.eval()
+            if step % IMAGE_STEP == 0:
 
-                for j, image in enumerate(random_images):
-                    with torch.no_grad():
-                        restored_image, _, _ = model.G(image, T=min(e, 10))
-                        restored_image = restored_image[0].cpu()
-                    writer.add_image(f'sample_{j}', restored_image, i)
+                images = torch.cat([
+                    random_images.cpu(),
+                    model(random_images).cpu()
+                ])
 
-                model.G.train()
+                grid = make_grid(images, nrow=10, padding=0)
+                writer.add_image('samples', grid, step)
 
-            if i % PLOT_LOSS_STEP == 0:
+            if step % PRINT_FREQ == 0:
 
                 for k, v in losses.items():
                     writer.add_scalar(f'losses/{k}', v, i)
 
-            print(f'epoch {e}, iteration {i}, time {step_time} ms')
+                writer.add_scalar('time', step_time, step)
+                writer.add_scalar('lr', model.optimizer.param_groups[0]['lr'], step)
 
-        if e % SAVE_EPOCH == 0:
-            model.save_model(MODEL_SAVE_PREFIX + f'_epoch_{e}')
+            if step % SAVE_STEP == 0:
+
+                save_folder = os.path.join(WEIGHTS, 'latest')
+                os.makedirs(save_folder, exist_ok=True)
+                model.save(save_folder)
+
+                print(f'model is saved, step {step}')
+
+            step += 1
 
 
 main()
